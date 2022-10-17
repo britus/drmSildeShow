@@ -13,6 +13,9 @@
 #include <xf86drm.h>
 #include <xf86drmMode.h>
 #include <drm_fourcc.h>
+#include <sys/epoll.h>
+#include <sys/reboot.h> /* Definition of LINUX_REBOOT_* constants */
+#include <sys/signalfd.h>
 
 static int cnt_call = 1;
 
