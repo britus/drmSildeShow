@@ -513,14 +513,14 @@ static struct modeset_device *modeset_device_create(int fd, drmModeRes *res, drm
 	if (ret)
 	{
 		fprintf(stderr, "cannnot get properties \n");
-		goto dev_blob;
+		goto dev_obj;
 	}
 
 	ret = modeset_setup_framebuffer(fd, conn, dev);
 	if (ret)
 	{
 		fprintf(stderr, "connot create framebuffers for connector %u\n", conn->connector_id);
-		goto dev_blob;
+		goto dev_obj;
 	}
 
 	fprintf(stderr, "mode for connector %u is %ux%u\n", conn->connector_id, dev->bufs[0].width, dev->bufs[0].height);
@@ -642,7 +642,7 @@ static uint8_t next_color(bool *up, uint8_t cur, unsigned int mod)
 static void modeset_draw_framebuffer(struct modeset_device *dev)
 {
 	struct modeset_buf *buf;
-	unsigned int j, k, off, random;
+	unsigned int j, k, off;
 	char time_left[5];
 	cairo_t *cr;
 	cairo_surface_t *surface, *image;
