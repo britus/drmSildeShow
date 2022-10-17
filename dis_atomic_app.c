@@ -16,6 +16,8 @@
 #include <sys/epoll.h>
 #include <sys/reboot.h> /* Definition of LINUX_REBOOT_* constants */
 #include <sys/signalfd.h>
+#include <sys/select.h>
+#include <signal.h>
 
 static int cnt_call = 1;
 
