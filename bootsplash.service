@@ -17,7 +17,8 @@ After=systemd-udevd.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/bootsplash
+ExecStart=/bin/sh -c '/usr/local/bin/bootsplash &'
+ExecStop=pkill bootsplash
 TimeoutSec=0
 RemainAfterExit=yes
 GuessMainPID=no
