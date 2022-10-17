@@ -862,6 +862,7 @@ static void modeset_cleanup(int fd)
 	}
 }
 
+#if 0
 static int g_terminate = 0;
 void signal_handler(int signo)
 {
@@ -877,10 +878,8 @@ void signal_handler(int signo)
     }
 }
 
-/**
- * Install OS signal handler
- */
-sighandler_t sig_install_handler(int sig, sighandler_t handler = SIG_DFL)
+/* Install OS signal handler */
+sighandler_t sig_install_handler(int sig, sighandler_t handler)
 {
     struct sigaction add_sig;
 
@@ -920,6 +919,7 @@ static inline void catchsignals()
         return -EINVAL;
     }
 }
+#endif
 
 static int fd_epoll;
 inline int register_signals(sigset_t* prevSigset, sigset_t* newSigset)
@@ -966,6 +966,7 @@ inline int register_signals(sigset_t* prevSigset, sigset_t* newSigset)
 static int fd_signals;
 static sigset_t g_sigset_prev;
 static sigset_t g_sigset_new;
+
 static inline int catch_signals()
 {    
 	/* allocate epoll file descriptor */
