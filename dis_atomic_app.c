@@ -922,7 +922,7 @@ static inline void catchsignals()
 #endif
 
 static int fd_epoll;
-inline int register_signals(sigset_t* prevSigset, sigset_t* newSigset)
+static int register_signals(sigset_t* prevSigset, sigset_t* newSigset)
 {
     struct epoll_event event;
     sigset_t mask;
