@@ -19,6 +19,8 @@
 #include <sys/select.h>
 #include <signal.h>
 
+#define BOOT_IMAGE_FILE "/etc/boot/boot-01.png"
+
 static int cnt_call = 1;
 
 struct drm_object
@@ -664,7 +666,7 @@ static void modeset_draw_framebuffer(struct modeset_device *dev)
 		}
 	}
 
-	image = cairo_image_surface_create_from_png("/etc/boot/boot-01.png");
+	image = cairo_image_surface_create_from_png(BOOT_IMAGE_FILE);
 	surface = cairo_image_surface_create_for_data(buf->map, CAIRO_FORMAT_ARGB32,
 												  buf->width, buf->height, buf->stride);
 	cr = cairo_create(surface);
