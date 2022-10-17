@@ -808,29 +808,7 @@ static void modeset_draw(int fd)
 	ev.page_flip_handler2 = modeset_page_flip_event;
 
 	modeset_perform_modeset(fd);
-
-	while (time(&cur) < start + 45)
-	{
-		FD_SET(0, &fds);
-		FD_SET(fd, &fds);
-		v.tv_sec = start + 45 - cur;
-
-		ret = select(fd + 1, &fds, NULL, NULL, &v);
-		if (ret < 0)
-		{
-			fprintf(stderr, "select() failed with %d: %m\n", errno);
-			break;
-		}
-		else if (FD_ISSET(0, &fds))
-		{
-			fprintf(stderr, "exit due to user-input\n");
-			break;
-		}
-		else if (FD_ISSET(fd, &fds))
-		{
-			drmHandleEvent(fd, &ev);
-		}
-	}
+	drmHandleEvent(fd, &ev);
 }
 
 static void modeset_cleanup(int fd)
