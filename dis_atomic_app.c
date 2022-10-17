@@ -793,17 +793,10 @@ static int modeset_perform_modeset(int fd)
 
 static void modeset_draw(int fd)
 {
-	int ret;
-	fd_set fds;
-	time_t start, cur;
-	struct timeval v;
 	drmEventContext ev;
+	int ret;
 
-	srand(time(&start));
-	FD_ZERO(&fds);
-	memset(&v, 0, sizeof(v));
 	memset(&ev, 0, sizeof(ev));
-
 	ev.version = 3;
 	ev.page_flip_handler2 = modeset_page_flip_event;
 
@@ -1039,7 +1032,8 @@ int main(int argc, char **argv)
 
 	modeset_draw(fd);
 	
-	while(1) {
+	/* main loop SIGUSR1, SIGUSR2, SIGTERM exit loop */
+	while(1) { 
         if ((ret = epoll_pwait(fd_epoll, &event, 1, -1, (const __sigset_t*)&g_sigset_new)) < 0) {
             fprintf(stderr, "epoll_wait() failed. terminate with err: %d\n", errno);
             break;
