@@ -857,10 +857,182 @@ static void modeset_cleanup(int fd)
 	}
 }
 
+static int g_terminate = 0;
+void signal_handler(int signo)
+{
+    switch (signo) {
+        case SIGUSR1:
+        case SIGUSR2:
+        case SIGTERM:
+        case SIGKILL:
+            g_terminate = 1;
+            break;
+        default:
+            break;
+    }
+}
+
+/**
+ * Install OS signal handler
+ */
+sighandler_t sig_install_handler(int sig, sighandler_t handler = SIG_DFL)
+{
+    struct sigaction add_sig;
+
+    /* get current signal action */
+    if (sigaction(sig, NULL, &add_sig) < 0) {
+        qCritical() << "sigaction() #1: failed:" << strerror(errno);
+        return SIG_ERR;
+    }
+
+    add_sig.sa_handler = handler;
+
+    /* set signal number to signal set mask */
+    if (sigaddset(&add_sig.sa_mask, sig)) {
+        qCritical() << "sigaddset() #2: failed:" << strerror(errno);
+        return SIG_ERR;
+    }
+
+    /* set our signal action */
+    add_sig.sa_flags = SA_RESTART;
+    if (sigaction(sig, &add_sig, NULL) < 0) {
+        qCritical() << "sigaction() #3: failed:" << strerror(errno);
+        return SIG_ERR;
+    }
+
+    return add_sig.sa_handler;
+}
+
+static inline void catchsignals()
+{
+    if (sig_install_handler(SIGUSR1, signal_handler) == SIG_ERR) {
+        return -EINVAL;
+    }
+    if (sig_install_handler(SIGUSR2, signal_handler) == SIG_ERR) {
+        return -EINVAL;
+    }
+    if (sig_install_handler(SIGTERM, signal_handler) == SIG_ERR) {
+        return -EINVAL;
+    }
+}
+
+static int fd_epoll;
+inline int register_signals(sigset_t* prevSigset, sigset_t* newSigset)
+{
+    struct epoll_event event;
+    sigset_t mask;
+    int sfd;
+
+    sigemptyset(newSigset);
+    sigemptyset(prevSigset);
+
+    sigemptyset(&mask);
+    sigaddset(&mask, SIGINT);
+    sigaddset(&mask, SIGHUP);
+    sigaddset(&mask, SIGUSR1);
+    sigaddset(&mask, SIGUSR2);
+    sigaddset(&mask, SIGKILL);
+    sigaddset(&mask, SIGTERM);
+
+    if (sigprocmask(SIG_SETMASK, &mask, prevSigset) == -1) {
+        fprintf(stderr, "Failed to setup signal proc mask!\n");
+        return -EINVAL;
+    }
+
+    sfd = signalfd(-1, &mask, SFD_NONBLOCK);
+    if (sfd == -1) {
+        fprintf(stderr, "Failed to get signal fd!\n");
+        return -EINVAL;
+    }
+
+    /* Add fd to be monitored by epoll */
+    event.events = EPOLLIN;
+    event.data.fd = sfd;
+    if (epoll_ctl(fd_epoll, EPOLL_CTL_ADD, sfd, &event) == -1) {
+        fprintf(stderr, "Failed to register signal: %d\n", sfd);
+        close(sfd);
+        return -EINVAL;
+    }
+
+    (*newSigset) = mask;
+    return sfd;
+}
+
+static int fd_signals;
+static sigset_t g_sigset_prev;
+static sigset_t g_sigset_new;
+static inline int catch_signals()
+{    
+	/* allocate epoll file descriptor */
+    fd_epoll = epoll_create(6);
+    if (fd_epoll < 0) {
+        return -EINVAL;
+    }
+
+    /* monitor process signals, so we can terminate thread
+     * loop with registred SIGxxx signals. This terminates
+     * the CarIOS main process with SIGINT too. */
+    if ((fd_signals = register_signals(&g_sigset_prev, &g_sigset_new)) < 0) {
+        fprintf(stderr, "Failed to register signals. err=%d\n", errno);
+        close(fd_epoll);
+        fd_epoll = -1;
+        return -EINVAL;
+    }
+
+	return 0;
+}
+
+/* check epoll event error flags  */
+static int check_event_flags(unsigned long flags)
+{
+    bool result = 0;
+    if (!(flags & EPOLLIN) && ((flags & EPOLLERR) || (flags & EPOLLHUP))) {
+        if (flags & EPOLLERR) {
+            fprintf(stderr, "EPOLLERR detected.\n");
+            result = -EINVAL;
+        }
+        if (flags & EPOLLHUP) {
+            fprintf(stderr, "EPOLLHUP detected.\n");
+            result = -EINVAL;
+        }
+    }
+    return result;
+}
+
+static int should_terminate(const int fd)
+{
+    struct signalfd_siginfo sfd_si;
+    int ret;
+
+    /* read signals */
+    while ((ret = read(fd, &sfd_si, sizeof(sfd_si)))) {
+
+        if (ret <= 0)
+            break;
+
+        switch (sfd_si.ssi_signo) {
+			case SIGHUP:
+			case SIGUSR1:
+			case SIGUSR2:
+            case SIGTERM:
+            case SIGKILL:
+            case SIGINT: {
+                fprintf(stderr, "Terminate signal: %d\n", sfd_si.ssi_signo);
+				return 1;
+            }
+            default: {
+                fprintf(stderr, "Unhandled signal: %d\n", sfd_si.ssi_signo);
+            }
+        }
+    }
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
 	int ret, fd;
 	const char *card;
+	struct epoll_event event;
 
 	if (argc > 1)
 		card = argv[1];
@@ -868,6 +1040,10 @@ int main(int argc, char **argv)
 		card = "/dev/dri/card0";
 
 	fprintf(stderr, "using card '%s'\n", card);
+
+	ret = catch_signals();
+	if (ret)
+		return EXIT_FAILURE;
 
 	ret = modeset_open(&fd, card);
 	if (ret)
@@ -878,7 +1054,28 @@ int main(int argc, char **argv)
 		goto out_close;
 
 	modeset_draw(fd);
-
+	
+	while(1) {
+        if ((ret = epoll_pwait(fd_epoll, &event, 1, -1, (const __sigset_t*)&g_sigset_new)) < 0) {
+            fprintf(stderr, "epoll_wait() failed. terminate with err: %d\n", errno);
+            break;
+        }
+		if (check_event_flags(event.events)) {
+			break;
+		}
+		/* skip invalid FDs */
+        if (event.data.fd == 0) {
+            continue;
+		}
+        /* event on signalfd */
+        if (event.data.fd == fd_signals) {
+            if (should_terminate(fd_signals))
+                break;
+            /* skip event */
+            continue;
+        }
+	}
+	
 	modeset_cleanup(fd);
 	ret = 0;
 
@@ -886,14 +1083,11 @@ out_close:
 	close(fd);
 	
 out_return:
+	close(fd_epoll);
 	if (ret)
 	{
 		errno = -ret;
-		fprintf(stderr, "modeset failed with error %d: %m\n", errno);
-	}
-	else
-	{
-		fprintf(stderr, "exiting\n");
+		fprintf(stderr, "modeset failed with error %d\n", errno);
 	}
 	return ret;
 }
