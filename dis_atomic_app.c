@@ -794,8 +794,6 @@ static int modeset_perform_modeset(int fd)
 static void modeset_draw(int fd)
 {
 	drmEventContext ev;
-	int ret;
-
 	memset(&ev, 0, sizeof(ev));
 	ev.version = 3;
 	ev.page_flip_handler2 = modeset_page_flip_event;
